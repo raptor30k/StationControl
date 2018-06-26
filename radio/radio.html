@@ -1,0 +1,221 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <!-- The above 3 meta tags *must* come first in the head; any other head content must come *after* these tags -->
+
+    <title>Control Radio</title>
+	
+	<!-- Bootstrap requires jquery v2.x (not v3 or higher) -->
+    <script src="../lib/jquery-2.2.4.min.js"></script>
+    <!-- Bootstrap core CSS -->
+    <link href="../bootstrap/css/bootstrap.min.css" rel="stylesheet">
+    <script src="../bootstrap/js/bootstrap.min.js"></script>
+    <!-- Custom styles for this template -->
+    <link href="../css/navbar-fixed-top.css" rel="stylesheet">
+    
+    <script src='../common.js'></script>
+    <script type="text/javascript">
+		var timer = null;
+		var slices = new Array();
+		RADIOFILE = '/home/pi/bin/stationcontrol/radio/flex6k_monitor.py';
+		
+		$(document).ready(function(){
+			$("#pon").click(function(){
+				radioStart("start", '/home/pi/bin/stationcontrol/radio/start_radio.cgi');
+			});
+			$("#poff").click(function(){
+				radioStart("stop", '/home/pi/bin/stationcontrol/radio/flex6k_monitor.py');
+			});
+			$("#RemoteRadPwr").click(function(){
+				if ($("#RemoteRadPwr").text() == "OFF")
+					relayControl(relayButton, 'exec', "RemoteRadPwr", 'on');
+				else
+					relayControl(relayButton, 'exec', "RemoteRadPwr", 'off');
+			});
+		});
+
+		function radioStart(cmd, filename) {
+			$.ajax({url:'../prog_control.py',
+					cache: false,
+					data: {'cmd':cmd, 'file':filename},
+					type: "GET",
+					success: function(data) {
+						$("div.controldata").html(data);
+						returnVal = data.substring(1,6);
+						setTimeout(function() {$("div.controldata").html('');}, 3000);
+						if (returnVal === 'Radio') {
+							powerButton('on');
+						} else {
+							powerButton('off');
+						}
+					}
+			});
+			setTimeout(checkRadio, 3000);
+		}
+		
+		function checkRadio() {
+			$.ajax({url:'../prog_control.py',
+					data: {'cmd':'check', 'file':RADIOFILE},
+					cache: false,
+					type: "GET",
+					success: function(data) {
+						$("div.controldata").html(data);
+						returnVal = data.substring(1,8);
+						setTimeout(function() {$("div.controldata").html('');}, 3000);
+						if (returnVal === 'Running') {
+							powerButton('on');
+						} else {
+							powerButton('off');
+						}
+					},
+					error: function(xhr) {
+						alert('Error in checkRadio:' + xhr);
+						if (confirm('RelayControl Probably NOT Running.\n' +
+								'Do You want to Start it?')) {
+							startRelayControl('start');
+						}
+					}
+			});
+		}
+		
+		function powerButton(cmd) {
+			if (cmd == 'on') {
+				$("#pon").css({"background-color": "lightgreen", "color": "black"});
+				$("#poff").css("background-color", "blue");
+				startPoll_slices();
+			}
+			else {
+				$("#pon").css({"background-color": "blue", "color": "white"});
+				$("#poff").css("background-color", "red");
+				stopPoll_slices();
+				//getSlices(getSlices_result); // to clear display
+				getSlices_result(false); // to clear display
+		    }
+		}
+		
+		function relayButton(button, cmd) {
+			if (cmd == 'on') {
+				$("#"+button).css({"background-color": "lightgreen", "color": "black"});
+				$("#"+button).text("ON");
+			}
+			else {
+				$("#"+button).css({"background-color": "red", "color": "white"});
+				$("#"+button).text("OFF");
+		    }
+		}
+		
+		function dispSlices() {
+			htmlStr = '<table class="table-condensed"><tr>';
+			for (i=0;i<slices.length;i++) {
+				sl = slices[i];
+				if (sl.active == '1')
+					active = "<span style='color:Red'>Active:";
+				else
+					active = "Active:";
+					
+				if (sl.tx == '1')
+					xmit = "<span style='color:Red'>Tx:";
+				else
+					xmit = "Tx:";
+
+				htmlStr += '<td style="vertical-align:middle;">';
+				f = parseFloat(sl.freq).toFixed(3);
+				htmlStr += '<b>Slice:</b> '+ sl.slice_num +'<br><b>Freq:</b> '+ f +' MHz<br><b>'+ active +'</b> '+ sl.active +'<br><b>'+ xmit +'</b> '+ sl.tx;
+				htmlStr += '</td>';
+			}
+			htmlStr += '</tr></table>';
+			$("div.slices").html(htmlStr);
+		}
+		
+		function getSlices_result(success) {
+			if (success) {
+				powerButton('on');
+				dispSlices();
+			}
+			else
+				$("div.slices").html('SmartSDR or Radio Monitor NOT running');
+		}
+		
+		function startPoll_slices() {
+			if (timer !== null) return;
+			timer = setInterval(function () {
+				getSlices(getSlices_result);
+			}, 5000);
+		}
+		
+		function stopPoll_slices() {
+			clearInterval(timer);
+			timer = null;
+		}
+		
+		function onLoad() {
+			relayControl(relayButton, 'status', 'RemoteRadPwr', 'na');
+			checkRadio();
+			getSlices(getSlices_result); // passing callback funtion
+		}
+    </script>
+ 
+    <style>
+		button {width: 50px; text-align:center}
+	</style>
+
+  </head>
+
+  <body onLoad="onLoad()">
+
+    <!-- Fixed navbar -->
+    <nav class="navbar navbar-inverse navbar-fixed-top">
+      <div class="container">
+        <div class="navbar-header">
+          <button type="button" class="navbar-toggle collapsed" data-toggle="collapse" data-target="#navbar" aria-expanded="false" aria-controls="navbar">
+            <span class="sr-only">Toggle navigation</span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+            <span class="icon-bar"></span>
+          </button>
+          <a class="navbar-brand">Station Control</a>
+        </div>
+        <div id="navbar" class="navbar-collapse collapse">
+          <ul class="nav navbar-nav">
+            <li><a href="../">Home</a></li>
+            <li class="active"><a >Radio</a></li>
+            <li><a href="../steppir/steppir.html">SteppIR</a></li>
+            <li><a href="../amplifier/amp.html">Amplifier</a></li>
+            <li><a href="../relays/relay.html">Relays</a></li>
+          </ul>
+        </div><!--/.nav-collapse -->
+      </div>
+    </nav>
+
+    <div class="container">
+      <div class="well">
+        <h2>Radio Control</h2>
+        <p>FlexRadio Flex-6000 Series</p>
+      </div>
+	<table class="table-bordered" width="500px" style="background-color:#f5f5f5;">
+		<tr><th style="width:100px; text-align:center">Radio Monitor</th><th style="text-align:center">Current Slices</th></tr>
+		<tr valign="top" align="center" height="90px">
+		<td>
+		<div class="btn-group-vertical">
+			<button id="pon" type="button" class="btn btn-primary">ON</button>
+			<button id="poff" type="button" class="btn btn-primary">OFF</button>
+		</div>
+		<div class="controldata"></div>
+		</td><td align="left">
+		<div class="slices"></div></td>
+	</tr><tr>
+		<td colspan="2"><div class="btn">Remote Radio Power<br>
+			<button id="RemoteRadPwr">OFF</button></div></td>
+	</tr></table>
+	
+	<h4>Notes: <small>(Program updated: Tue 5-Jul-16)</small></h4>
+      <ul>
+       <li>Automatically updates Slice info with changes on the radio. This information is then used by other programs needing Slice info.</li>
+       <li>Added Relay Control. Here, to control Remote Radio ON signal to Flex-6000.</li>
+      </ul>
+    </div> <!-- /container -->
+  </body>
+</html>
